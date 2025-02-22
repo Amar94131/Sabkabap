@@ -3,19 +3,19 @@ import asyncio
 import re
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
-from telethon import TelegramClient
-from telethon.errors import PeerIdInvalidError, UserNotParticipantError
+from telethon import TelegramClient, functions, types, errors
 
-
-CHANNEL_ID = -1002156040011
 # Load environment variables
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")  # Channel username or ID
+API_ID = int(os.getenv("API_ID", "24389326"))  # Replace with your API_ID
+API_HASH = os.getenv("API_HASH", "e516c423e3edd76854e1c0741863f6f0")  # Replace with your API_HASH
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7606038780:AAGiQs757sNQDp1rrJdPvOHqPyjnFn-S83o")  # Replace with your BOT_TOKEN
+CHANNEL_ID = os.getenv("CHANNEL_ID", "-1002156040011")  # Replace with your Channel ID
 
-# Initialize Telethon client in bot mode
-client = TelegramClient("bot_session", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+if CHANNEL_ID.startswith("-100"):
+    CHANNEL_ID = int(CHANNEL_ID)
+
+# Initialize Telethon Client WITHOUT session
+client = TelegramClient(None, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # Initialize Telegram Bot API
 app = Application.builder().token(BOT_TOKEN).build()
@@ -56,23 +56,18 @@ async def remove_user(update: Update, context: CallbackContext):
         async with client:
             try:
                 user = await client.get_entity(user_id)  # Validate user
-            except PeerIdInvalidError:
+            except errors.PeerIdInvalidError:
                 await update.message.reply_text("Error: Invalid user ID.")
                 return
 
-            # Check if user is already in the channel
+            # Check if user is in the channel
             try:
-                participants = await client.get_participants(CHANNEL_ID)
-                if not participants:
-                    await update.message.reply_text("Error: Unable to fetch participants. Check bot's admin rights.")
-                    return
-
-                user_ids = [p.id for p in participants]
-                if user_id not in user_ids:
+                participant = await client(functions.channels.GetParticipantRequest(CHANNEL_ID, user_id))
+                if not participant:
                     await update.message.reply_text("User is not in the channel.")
                     return
-            except Exception as e:
-                await update.message.reply_text(f"Error checking user in channel: {str(e)}")
+            except errors.UserNotParticipantError:
+                await update.message.reply_text("User is not in the channel.")
                 return
 
         await update.message.reply_text(f"✅ User {user_id} will be removed after {time_str}.")
@@ -80,9 +75,13 @@ async def remove_user(update: Update, context: CallbackContext):
         # Schedule the user removal
         await asyncio.sleep(time_in_seconds)
         try:
-            await client.kick_participant(CHANNEL_ID, user_id)
+            await client(functions.channels.EditBannedRequest(
+                CHANNEL_ID,
+                user_id,
+                types.ChatBannedRights(until_date=None, view_messages=True)  # Bans user permanently
+            ))
             await update.message.reply_text(f"✅ User {user_id} removed from {CHANNEL_ID}.")
-        except UserNotParticipantError:
+        except errors.UserNotParticipantError:
             await update.message.reply_text(f"⚠ User {user_id} is not in the channel.")
         except Exception as e:
             await update.message.reply_text(f"❌ Error removing user {user_id}: {str(e)}")
