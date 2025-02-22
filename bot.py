@@ -14,7 +14,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID", "-1002156040011")
 if CHANNEL_ID.startswith("-100"):
     CHANNEL_ID = int(CHANNEL_ID)
 
-# Initialize Telethon Client WITH session (Fix)
+# Initialize Telethon Client
 client = TelegramClient("bot_session", API_ID, API_HASH)
 
 # Initialize Telegram Bot API
@@ -35,11 +35,16 @@ async def remove_user(update: Update, context: CallbackContext):
     """Handle /remove_user command to schedule user removal."""
     try:
         args = context.args
-        if len(args) < 2:
+        if not args or len(args) < 2:
             await update.message.reply_text("Usage: /remove_user user_id time (e.g., /remove_user 123456789 10s,5m,1h)")
             return
 
-        user_id = int(args[0])
+        user_id = args[0]
+        if not user_id.isdigit():
+            await update.message.reply_text("Error: Invalid user ID format.")
+            return
+        user_id = int(user_id)
+
         time_str = args[1]
         time_in_seconds = time_to_seconds(time_str)
 
@@ -47,54 +52,41 @@ async def remove_user(update: Update, context: CallbackContext):
             await update.message.reply_text("Invalid time format! Use s (seconds), m (minutes), h (hours), d (days).")
             return
 
-        if not CHANNEL_ID:
-            await update.message.reply_text("Error: CHANNEL_ID is not set. Please check bot settings.")
+        await client.start()  # Ensure client is started
+
+        try:
+            user = await client.get_entity(user_id)
+        except errors.PeerIdInvalidError:
+            await update.message.reply_text("Error: Invalid user ID.")
             return
 
-        async with client:
-            await client.connect()  # Ensure connection is established
-            
-            if not await client.is_user_authorized():
-                await update.message.reply_text("Error: Bot is not authorized. Please check API credentials.")
-                return
-
-            try:
-                user = await client.get_entity(user_id)  # Validate user
-            except errors.PeerIdInvalidError:
-                await update.message.reply_text("Error: Invalid user ID.")
-                return
-
-            # Check if user is in the channel
-            try:
-                participant = await client(functions.channels.GetParticipantRequest(CHANNEL_ID, user_id))
-                if not participant:
-                    await update.message.reply_text("User is not in the channel.")
-                    return
-            except errors.UserNotParticipantError:
+        try:
+            participant = await client(functions.channels.GetParticipantRequest(CHANNEL_ID, user_id))
+            if not participant:
                 await update.message.reply_text("User is not in the channel.")
                 return
+        except errors.UserNotParticipantError:
+            await update.message.reply_text("User is not in the channel.")
+            return
 
         await update.message.reply_text(f"✅ User {user_id} will be removed after {time_str}.")
-
-        # Schedule the user removal
+        
         await asyncio.sleep(time_in_seconds)
-        async with client:
-            await client.connect()  
-            try:
-                await client(functions.channels.EditBannedRequest(
-                    CHANNEL_ID,
-                    user_id,
-                    types.ChatBannedRights(until_date=None, view_messages=True)  # Bans user permanently
-                ))
-                await update.message.reply_text(f"✅ User {user_id} removed from {CHANNEL_ID}.")
-            except errors.UserNotParticipantError:
-                await update.message.reply_text(f"⚠ User {user_id} is not in the channel.")
-            except Exception as e:
-                await update.message.reply_text(f"❌ Error removing user {user_id}: {str(e)}")
+
+        try:
+            await client(functions.channels.EditBannedRequest(
+                CHANNEL_ID,
+                user_id,
+                types.ChatBannedRights(until_date=None, view_messages=True)
+            ))
+            await update.message.reply_text(f"✅ User {user_id} removed from {CHANNEL_ID}.")
+        except errors.UserNotParticipantError:
+            await update.message.reply_text(f"⚠ User {user_id} is not in the channel.")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error removing user {user_id}: {str(e)}")
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
-
 
 async def start(update: Update, context: CallbackContext):
     """Start command response."""
