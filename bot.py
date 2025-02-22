@@ -6,6 +6,8 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from telethon import TelegramClient
 from telethon.errors import PeerIdInvalidError, UserNotParticipantError
 
+
+CHANNEL_ID = -1002156040011
 # Load environment variables
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
