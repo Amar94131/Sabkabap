@@ -13,9 +13,11 @@ API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = os.getenv("CHANNEL_ID")  # Channel username or ID
 
-# Initialize clients
+# Initialize Telethon client in bot mode
+client = TelegramClient("bot_session", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+
+# Initialize Telegram Bot API
 app = Application.builder().token(BOT_TOKEN).build()
-client = TelegramClient("bot_session", API_ID, API_HASH)
 
 
 def time_to_seconds(time_str):
@@ -34,11 +36,11 @@ async def remove_user(user_id):
     """Remove user from channel after given time."""
     try:
         await client.kick_participant(CHANNEL_ID, user_id)
-        print(f"User {user_id} removed from {CHANNEL_ID}")
+        print(f"✅ User {user_id} removed from {CHANNEL_ID}")
     except UserNotParticipantError:
-        print(f"User {user_id} is not in the channel.")
+        print(f"⚠ User {user_id} is not in the channel.")
     except Exception as e:
-        print(f"Error removing user {user_id}: {str(e)}")
+        print(f"❌ Error removing user {user_id}: {str(e)}")
 
 
 async def add_user(update: Update, context: CallbackContext):
@@ -75,14 +77,14 @@ async def add_user(update: Update, context: CallbackContext):
                 await update.message.reply_text(f"Error checking user in channel: {str(e)}")
                 return
 
-        await update.message.reply_text(f"User {user_id} will be removed after {time_str}.")
+        await update.message.reply_text(f"✅ User {user_id} will be removed after {time_str}.")
 
         # Schedule the user removal
         await asyncio.sleep(time_in_seconds)
         await remove_user(user_id)
 
     except Exception as e:
-        await update.message.reply_text(f"Error: {str(e)}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
 
 async def start(update: Update, context: CallbackContext):
@@ -94,10 +96,9 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("add_user", add_user))
 
-    print("Bot is running...")
+    print("🚀 Bot is running on Render...")
     app.run_polling()
 
 
 if __name__ == "__main__":
-    with client:
-        client.loop.run_until_complete(main())
+    main()
