@@ -1,7 +1,8 @@
+import os
 import time
 import logging
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Application, CommandHandler, CallbackContext
 from telethon import TelegramClient
 from config import API_ID, API_HASH, BOT_TOKEN, CHANNEL_ID
 
@@ -36,46 +37,45 @@ def time_to_seconds(time_str):
     return total_seconds
 
 # Command to add user with a specified time
-def add_user(update: Update, context: CallbackContext):
+async def add_user(update: Update, context: CallbackContext):
     try:
         args = context.args
         if len(args) < 2:
-            update.message.reply_text("Usage: /add_user user_id time (e.g., /add_user 123456789 10s,5m,1h)")
+            await update.message.reply_text("Usage: /add_user user_id time (e.g., /add_user 123456789 10s,5m,1h)")
             return
 
         user_id = int(args[0])
         time_in_seconds = time_to_seconds(args[1])
 
         if time_in_seconds <= 0:
-            update.message.reply_text("Invalid time format! Use s (seconds), m (minutes), h (hours), d (days), mo (months), y (years).")
+            await update.message.reply_text("Invalid time format! Use s (seconds), m (minutes), h (hours), d (days), mo (months), y (years).")
             return
 
         # Promote user to the channel
-        client.loop.run_until_complete(client.edit_admin(CHANNEL_ID, user_id, is_admin=True))
-        update.message.reply_text(f"User {user_id} added for {args[1]}.")
+        await client.edit_admin(CHANNEL_ID, user_id, is_admin=True)
+        await update.message.reply_text(f"User {user_id} added for {args[1]}.")
 
         # Schedule removal
-        scheduled_removals[user_id] = client.loop.call_later(time_in_seconds, remove_user, user_id)
+        time.sleep(time_in_seconds)
+        await remove_user(user_id)
 
     except Exception as e:
-        update.message.reply_text(f"Error: {str(e)}")
+        await update.message.reply_text(f"Error: {str(e)}")
 
 # Function to remove user after the set time
-def remove_user(user_id):
+async def remove_user(user_id):
     try:
-        client.loop.run_until_complete(client.kick_participant(CHANNEL_ID, user_id))
+        await client.kick_participant(CHANNEL_ID, user_id)
         logging.info(f"User {user_id} removed from {CHANNEL_ID}.")
     except Exception as e:
         logging.error(f"Failed to remove user {user_id}: {e}")
 
 def main():
-    updater = Updater(BOT_TOKEN, use_context=True)
-    dp = updater.dispatcher
+    app = Application.builder().token(BOT_TOKEN).build()
 
-    dp.add_handler(CommandHandler("add_user", add_user))
+    app.add_handler(CommandHandler("add_user", add_user))
 
-    updater.start_polling()
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
