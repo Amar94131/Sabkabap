@@ -6,20 +6,19 @@ from telegram.ext import Application, CommandHandler, CallbackContext
 from telethon import TelegramClient, functions, types, errors
 
 # Load environment variables
-API_ID = int(os.getenv("API_ID", "24389326"))  # Replace with your API_ID
-API_HASH = os.getenv("API_HASH", "e516c423e3edd76854e1c0741863f6f0")  # Replace with your API_HASH
-BOT_TOKEN = os.getenv("BOT_TOKEN", "7606038780:AAGiQs757sNQDp1rrJdPvOHqPyjnFn-S83o")  # Replace with your BOT_TOKEN
-CHANNEL_ID = os.getenv("CHANNEL_ID", "-1002156040011")  # Replace with your Channel ID
+API_ID = int(os.getenv("API_ID", "24389326"))  
+API_HASH = os.getenv("API_HASH", "e516c423e3edd76854e1c0741863f6f0")  
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7606038780:AAGiQs757sNQDp1rrJdPvOHqPyjnFn-S83o")  
+CHANNEL_ID = os.getenv("CHANNEL_ID", "-1002156040011")  
 
 if CHANNEL_ID.startswith("-100"):
     CHANNEL_ID = int(CHANNEL_ID)
 
-# Initialize Telethon Client WITHOUT session
-client = TelegramClient(None, API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# Initialize Telethon Client WITH session (Fix)
+client = TelegramClient("bot_session", API_ID, API_HASH)
 
 # Initialize Telegram Bot API
 app = Application.builder().token(BOT_TOKEN).build()
-
 
 def time_to_seconds(time_str):
     """Convert time format (10s,5m,1h,1d) into seconds."""
@@ -31,7 +30,6 @@ def time_to_seconds(time_str):
         total_seconds += int(value) * time_units[unit]
 
     return total_seconds
-
 
 async def remove_user(update: Update, context: CallbackContext):
     """Handle /remove_user command to schedule user removal."""
@@ -54,6 +52,12 @@ async def remove_user(update: Update, context: CallbackContext):
             return
 
         async with client:
+            await client.connect()  # Ensure connection is established
+            
+            if not await client.is_user_authorized():
+                await update.message.reply_text("Error: Bot is not authorized. Please check API credentials.")
+                return
+
             try:
                 user = await client.get_entity(user_id)  # Validate user
             except errors.PeerIdInvalidError:
@@ -74,17 +78,19 @@ async def remove_user(update: Update, context: CallbackContext):
 
         # Schedule the user removal
         await asyncio.sleep(time_in_seconds)
-        try:
-            await client(functions.channels.EditBannedRequest(
-                CHANNEL_ID,
-                user_id,
-                types.ChatBannedRights(until_date=None, view_messages=True)  # Bans user permanently
-            ))
-            await update.message.reply_text(f"✅ User {user_id} removed from {CHANNEL_ID}.")
-        except errors.UserNotParticipantError:
-            await update.message.reply_text(f"⚠ User {user_id} is not in the channel.")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Error removing user {user_id}: {str(e)}")
+        async with client:
+            await client.connect()  
+            try:
+                await client(functions.channels.EditBannedRequest(
+                    CHANNEL_ID,
+                    user_id,
+                    types.ChatBannedRights(until_date=None, view_messages=True)  # Bans user permanently
+                ))
+                await update.message.reply_text(f"✅ User {user_id} removed from {CHANNEL_ID}.")
+            except errors.UserNotParticipantError:
+                await update.message.reply_text(f"⚠ User {user_id} is not in the channel.")
+            except Exception as e:
+                await update.message.reply_text(f"❌ Error removing user {user_id}: {str(e)}")
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
@@ -94,14 +100,12 @@ async def start(update: Update, context: CallbackContext):
     """Start command response."""
     await update.message.reply_text("Hello! Use /remove_user user_id time to remove a user after a set time.")
 
-
 def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("remove_user", remove_user))
 
     print("🚀 Bot is running...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
