@@ -6,7 +6,7 @@ import os
 #CHANNEL_ID = os.getenv("-1002156040011")  # Channel ID (e.g., @your_channel)
 
 
-API_ID = int(os.getenv("API_ID"))  # Correct way to fetch API_ID
-API_HASH = os.getenv("API_HASH")  
-BOT_TOKEN = os.getenv("BOT_TOKEN")  
-CHANNEL_ID = os.getenv("CHANNEL_ID")
+#API_ID = int(os.getenv("API_ID"))  # Correct way to fetch API_ID
+#API_HASH = os.getenv("API_HASH")  
+#BOT_TOKEN = os.getenv("BOT_TOKEN")  
+#CHANNEL_ID = os.getenv("CHANNEL_ID")
