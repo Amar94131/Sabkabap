@@ -1,7 +1,6 @@
 import os
 import asyncio
 import re
-from datetime import timedelta
 from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackContext
 from telethon import TelegramClient
@@ -21,7 +20,7 @@ app = Application.builder().token(BOT_TOKEN).build()
 
 
 def time_to_seconds(time_str):
-    """Convert time format (10s,5m,1h) into seconds."""
+    """Convert time format (10s,5m,1h,1d) into seconds."""
     time_units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
     total_seconds = 0
     matches = re.findall(r"(\d+)([smhd])", time_str)
@@ -32,23 +31,12 @@ def time_to_seconds(time_str):
     return total_seconds
 
 
-async def remove_user(user_id):
-    """Remove user from channel after given time."""
-    try:
-        await client.kick_participant(CHANNEL_ID, user_id)
-        print(f"✅ User {user_id} removed from {CHANNEL_ID}")
-    except UserNotParticipantError:
-        print(f"⚠ User {user_id} is not in the channel.")
-    except Exception as e:
-        print(f"❌ Error removing user {user_id}: {str(e)}")
-
-
-async def add_user(update: Update, context: CallbackContext):
-    """Handle /add_user command to schedule user removal."""
+async def remove_user(update: Update, context: CallbackContext):
+    """Handle /remove_user command to schedule user removal."""
     try:
         args = context.args
         if len(args) < 2:
-            await update.message.reply_text("Usage: /add_user user_id time (e.g., /add_user 123456789 10s,5m,1h)")
+            await update.message.reply_text("Usage: /remove_user user_id time (e.g., /remove_user 123456789 10s,5m,1h)")
             return
 
         user_id = int(args[0])
@@ -59,17 +47,25 @@ async def add_user(update: Update, context: CallbackContext):
             await update.message.reply_text("Invalid time format! Use s (seconds), m (minutes), h (hours), d (days).")
             return
 
+        if not CHANNEL_ID:
+            await update.message.reply_text("Error: CHANNEL_ID is not set. Please check bot settings.")
+            return
+
         async with client:
             try:
-                await client.get_entity(user_id)  # Validate user
+                user = await client.get_entity(user_id)  # Validate user
             except PeerIdInvalidError:
                 await update.message.reply_text("Error: Invalid user ID.")
                 return
 
             # Check if user is already in the channel
             try:
-                participant = await client.get_participants(CHANNEL_ID, filter=None)
-                user_ids = [p.id for p in participant]
+                participants = await client.get_participants(CHANNEL_ID)
+                if not participants:
+                    await update.message.reply_text("Error: Unable to fetch participants. Check bot's admin rights.")
+                    return
+
+                user_ids = [p.id for p in participants]
                 if user_id not in user_ids:
                     await update.message.reply_text("User is not in the channel.")
                     return
@@ -81,7 +77,13 @@ async def add_user(update: Update, context: CallbackContext):
 
         # Schedule the user removal
         await asyncio.sleep(time_in_seconds)
-        await remove_user(user_id)
+        try:
+            await client.kick_participant(CHANNEL_ID, user_id)
+            await update.message.reply_text(f"✅ User {user_id} removed from {CHANNEL_ID}.")
+        except UserNotParticipantError:
+            await update.message.reply_text(f"⚠ User {user_id} is not in the channel.")
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error removing user {user_id}: {str(e)}")
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
@@ -89,14 +91,14 @@ async def add_user(update: Update, context: CallbackContext):
 
 async def start(update: Update, context: CallbackContext):
     """Start command response."""
-    await update.message.reply_text("Hello! Use /add_user user_id time to remove a user after a set time.")
+    await update.message.reply_text("Hello! Use /remove_user user_id time to remove a user after a set time.")
 
 
 def main():
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("add_user", add_user))
+    app.add_handler(CommandHandler("remove_user", remove_user))
 
-    print("🚀 Bot is running on Render...")
+    print("🚀 Bot is running...")
     app.run_polling()
 
 
