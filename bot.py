@@ -1,21 +1,18 @@
 import os
-import asyncio
+import logging
 import re
 from telegram import Update
-from telegram.ext import Application, CommandHandler, CallbackContext
-from telethon import TelegramClient, functions, types, errors
+from telegram.ext import Application, CommandHandler, CallbackContext, JobQueue
 
-# Load environment variables
-API_ID = int(os.getenv("API_ID", "24389326"))  
-API_HASH = os.getenv("API_HASH", "e516c423e3edd76854e1c0741863f6f0")  
-BOT_TOKEN = os.getenv("BOT_TOKEN", "7606038780:AAGiQs757sNQDp1rrJdPvOHqPyjnFn-S83o")  
-CHANNEL_ID = os.getenv("CHANNEL_ID", "-1002156040011")  
+# Logging setup
+logging.basicConfig(format="%(asctime)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-if CHANNEL_ID.startswith("-100"):
-    CHANNEL_ID = int(CHANNEL_ID)
-
-# Initialize Telethon Client
-client = TelegramClient("bot_session", API_ID, API_HASH)
+# Bot Credentials (Yahan Tumhare API Details Hain)
+API_ID = 24389326  
+API_HASH = "e516c423e3edd76854e1c0741863f6f0"
+BOT_TOKEN = "7606038780:AAGiQs757sNQDp1rrJdPvOHqPyjnFn-S83o"
+GROUP_ID = -1002378088102  # Group ID jisme bot admin hai
 
 # Initialize Telegram Bot API
 app = Application.builder().token(BOT_TOKEN).build()
@@ -31,8 +28,25 @@ def time_to_seconds(time_str):
 
     return total_seconds
 
+async def remove_user_callback(context: CallbackContext):
+    """Callback function to remove user from group."""
+    job = context.job
+    user_id = job.data
+
+    try:
+        await context.bot.ban_chat_member(GROUP_ID, user_id)
+        await context.bot.send_message(
+            GROUP_ID, 
+            f"✅ User {user_id} removed from the group."
+        )
+        logger.info(f"User {user_id} removed successfully.")
+
+    except Exception as e:
+        await context.bot.send_message(GROUP_ID, f"❌ Error removing user {user_id}: {str(e)}")
+        logger.error(f"Error removing user {user_id}: {str(e)}")
+
 async def remove_user(update: Update, context: CallbackContext):
-    """Handle /remove_user command to schedule user removal."""
+    """Handle /remove_user command to schedule user removal from group."""
     try:
         args = context.args
         if not args or len(args) < 2:
@@ -52,52 +66,26 @@ async def remove_user(update: Update, context: CallbackContext):
             await update.message.reply_text("Invalid time format! Use s (seconds), m (minutes), h (hours), d (days).")
             return
 
-        await client.start()  # Ensure client is started
-
-        try:
-            user = await client.get_entity(user_id)
-        except errors.PeerIdInvalidError:
-            await update.message.reply_text("Error: Invalid user ID.")
-            return
-
-        try:
-            participant = await client(functions.channels.GetParticipantRequest(CHANNEL_ID, user_id))
-            if not participant:
-                await update.message.reply_text("User is not in the channel.")
-                return
-        except errors.UserNotParticipantError:
-            await update.message.reply_text("User is not in the channel.")
-            return
-
         await update.message.reply_text(f"✅ User {user_id} will be removed after {time_str}.")
         
-        await asyncio.sleep(time_in_seconds)
-
-        try:
-            await client(functions.channels.EditBannedRequest(
-                CHANNEL_ID,
-                user_id,
-                types.ChatBannedRights(until_date=None, view_messages=True)
-            ))
-            await update.message.reply_text(f"✅ User {user_id} removed from {CHANNEL_ID}.")
-        except errors.UserNotParticipantError:
-            await update.message.reply_text(f"⚠ User {user_id} is not in the channel.")
-        except Exception as e:
-            await update.message.reply_text(f"❌ Error removing user {user_id}: {str(e)}")
+        # Schedule Job
+        context.job_queue.run_once(remove_user_callback, time_in_seconds, data=user_id, chat_id=GROUP_ID)
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+        logger.error(f"Error in /remove_user: {str(e)}")
 
 async def start(update: Update, context: CallbackContext):
     """Start command response."""
     await update.message.reply_text("Hello! Use /remove_user user_id time to remove a user after a set time.")
 
-def main():
+async def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("remove_user", remove_user))
 
-    print("🚀 Bot is running...")
-    app.run_polling()
+    logger.info("🚀 Bot is running...")
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
